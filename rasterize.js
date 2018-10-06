@@ -70,6 +70,73 @@ function setupWebGL() {
  
 } // end setupWebGL
 
+function getColor(coord, index) {
+    var inputTriangles = getJSONFile(INPUT_TRIANGLES_URL,"triangles");
+    if (inputTriangles != String.null) { 
+		// color: Ka*La + Kd*Ld*(N(\dot)L) + Ks*Ls*(N(\dot)H)^n
+		// looking at, L_'s are all 1.
+		var lightCoord = [-1, 3, -0.5];
+		
+		var ambColor = inputTriangles[index].material.ambient; 
+		var difColor = inputTriangles[index].material.diffuse;
+		var spcColor = inputTriangles[index].material.specular;
+		var n = inputTriangles[index].material.n;
+		
+		// Ambient
+		//console.log(ambColor);
+		var ambR = ambColor[0];
+		var ambG = ambColor[1];
+		var ambB = ambColor[2];
+		
+		// Diffuse
+		// "up" vector
+		var N = [0,1,0]; // as stated in prog2 instructions
+		
+		// Normalize light source
+		var lightMag = Math.sqrt(Math.pow(lightCoord[0],2) 
+				+ Math.pow(lightCoord[1],2) 
+				+ Math.pow(lightCoord[2],2));
+		var L = [lightCoord[0]/lightMag, lightCoord[1]/lightMag, lightCoord[2]/lightMag];;
+		
+		var NdotL = N[0]*L[0] + N[1]*L[1] + N[2]*L[2];
+		
+		var difR = difColor[0] * NdotL;
+		var difG = difColor[1] * NdotL;
+		var difB = difColor[2] * NdotL;
+		
+		//console.log([difR,difG,difB]);
+		
+		// TODO Specular
+		// Find NdotH
+		// Find H 
+		// Find V+L, and normalize(?)
+		var V = [0.5, 0.5, -0.5]; // as stated in prog2 instructions
+		var eyeMag = Math.sqrt(Math.pow(V[0],2) 
+				+ Math.pow(V[1],2) 
+				+ Math.pow(V[2],2));
+		var VL_mag = Math.sqrt(Math.pow(V[0]/eyeMag+L[0],2)
+				+ Math.pow(V[1]/eyeMag+L[1],2)
+                + Math.pow(V[2]/eyeMag+L[2],2));
+
+		//var H = [(V[0]/eyeMag+L[0]) / VL_mag, (V[1]/eyeMag+L[1]) / VL_mag, (V[2]/eyeMag+L[2]) / VL_mag];
+		var H = [(V[0]/eyeMag+L[0]) / VL_mag, (V[1]/eyeMag+L[1]) / VL_mag, (V[2]/eyeMag+L[2]) / VL_mag];
+		
+		var NdHpn = Math.pow(N[0]*H[0] + N[1]*H[1] + N[2]*H[2], inputTriangles[index].material.n);
+
+		var spcR = spcColor[0] * NdHpn;
+		var spcG = spcColor[1] * NdHpn;
+		var spcB = spcColor[2] * NdHpn;
+		//console.log([spcR,spcG,spcB]);
+
+		var r = ambR + difR + spcR;
+		var g = ambG + difG + spcG;
+		var b = ambB + difB + spcB;
+				
+		//return [1.0, 1.0, 1.0, 1.0];
+		return [r, g, b, 1.0];
+    }
+}
+
 // read triangles in, load them into webgl buffers
 function loadTriangles() {
     var inputTriangles = getJSONFile(INPUT_TRIANGLES_URL,"triangles");
@@ -77,6 +144,8 @@ function loadTriangles() {
         var whichSetVert; // index of vertex in current triangle set
         var whichSetTri; // index of triangle in current triangle set
         var coordArray = []; // 1D array of vertex coords for WebGL
+        // TODO replace colors with this
+        var colorArray = [];
         
         // This is for the each set of triangles
         // Note this is not every triangle
@@ -84,6 +153,7 @@ function loadTriangles() {
           
             //console.log(inputTriangles[whichSet].triangles);
             //console.log(inputTriangles[whichSet].vertices);
+            //console.log(inputTriangles[whichSet].material);
             
             for (whichSetTri=0; whichSetTri<inputTriangles[whichSet].triangles.length; whichSetTri++) {
                 var thisTriangleArray = inputTriangles[whichSet].triangles[whichSetTri];
@@ -95,8 +165,14 @@ function loadTriangles() {
                     index = thisTriangleArray[whichSetVert];
                     //console.log(index);
                     
-                    coordArray = coordArray.concat(inputTriangles[whichSet].vertices[index]);
-                    //console.log(inputTriangles[whichSet].vertices[index]);
+                    var thisVertex = inputTriangles[whichSet].vertices[index];
+                    
+                    coordArray = coordArray.concat(thisVertex);
+                    //console.log(thisVertex);
+                    
+                    // find 4D color for colorArray using thisVertex
+                    var thisColor = getColor(thisVertex, whichSet);
+                    colorArray = colorArray.concat(thisColor);
                 }
             }
         } // end for each triangle set 
@@ -105,24 +181,13 @@ function loadTriangles() {
         vertexBuffer = gl.createBuffer(); // init empty vertex coord buffer
         gl.bindBuffer(gl.ARRAY_BUFFER,vertexBuffer); // activate that buffer
         gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(coordArray),gl.STATIC_DRAW); // coords to that buffer
-        const colors = [
-            1.0,  0.0,  0.0,  1.0,    // red
-            0.0,  1.0,  0.0,  1.0,    // green
-            0.0,  0.0,  1.0,  1.0,    // blue
-            1.0,  0.0,  0.0,  1.0,    // red
-            0.0,  1.0,  0.0,  1.0,    // green
-            0.0,  0.0,  1.0,  1.0,    // blue
-            1.0,  0.0,  0.0,  1.0,    // red
-            0.0,  1.0,  0.0,  1.0,    // green
-            0.0,  0.0,  1.0,  1.0,    // blue
-        ];
 
         colorBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER,colorBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colorArray), gl.STATIC_DRAW);
         
-        console.log(coordArray);
-        console.log(colors);
+        //console.log(coordArray);
+        //console.log(colors);
         
     } // end if triangles found
 } // end load triangles
@@ -206,7 +271,7 @@ function renderTriangles() {
     gl.vertexAttribPointer(vertexColorAttrib,4,gl.FLOAT,false,0,0); // feed
 
     gl.drawArrays(gl.TRIANGLES,0,triBufferSize); // render
-    console.log(triBufferSize);
+    //console.log(triBufferSize);
 } // end render triangles
 
 
